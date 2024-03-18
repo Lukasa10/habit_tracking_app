@@ -27,3 +27,11 @@ class User:
             if user_row:
                 return cls(*user_row, db_path=db_path)
             return None
+
+    def get_user_id(self):
+        # Example implementation - adjust based on how you're storing users
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT id FROM users WHERE username = ?", (self.username,))
+            user_id = cursor.fetchone()[0]
+            return user_id

@@ -1,17 +1,17 @@
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime , timedelta
 
 
 class Habit:
-    def __init__(self, habit_id, user_id, title, description, frequency, created_at, last_completed=None, streak=0,
-                 db_path="habit_tracker.db"):
+    def __init__(self, habit_id, user_id, title, description, frequency, created_at,
+                 last_completed=None, streak=0, db_path="habit_tracker.db"):
         self.habit_id = habit_id
         self.user_id = user_id
         self.title = title
         self.description = description
         self.frequency = frequency
-        self.created_at = created_at
-        self.last_completed = last_completed
+        self.created_at = datetime.strptime(created_at, '%Y-%m-%d').date() if isinstance(created_at, str) else created_at
+        self.last_completed = datetime.strptime(last_completed, '%Y-%m-%d').date() if last_completed and isinstance(last_completed, str) else last_completed
         self.streak = streak
         self.db_path = db_path
 
@@ -49,15 +49,12 @@ class Habit:
         self.streak = 0
         self.save_to_db()
 
-    @classmethod
-    def get_habit_by_id(cls, habit_id, db_path="habit_tracker.db"):
-        with sqlite3.connect(db_path) as conn:
-            cursor = conn.cursor()
-            cursor.execute('SELECT * FROM habits WHERE id = ?', (habit_id,))
-            habit_row = cursor.fetchone()
-            if habit_row:
-                return cls(habit_id, *habit_row[1:], db_path=db_path)
-            return None
+    def was_missed(self):
+        if not self.last_completed:
+            return False
+        next_due = self.next_due_date()
+        today = datetime.now().date()
+        return today > next_due
 
     def get_completion_rate(self):
         with sqlite3.connect(self.db_path) as conn:
@@ -83,6 +80,36 @@ class Habit:
         else:
             return 0
 
+    def next_due_date(self):
+        # If never completed, use the created_at date
+        base_date = self.last_completed if self.last_completed else self.created_at
+
+        if self.frequency == 'Daily':
+            return base_date + timedelta(days=1)
+        elif self.frequency == 'Weekly':
+            return base_date + timedelta(weeks=1)
+        elif self.frequency == 'Monthly':
+            # This approximation assumes 30 days as a month for simplicity
+            return base_date + timedelta(days=30)
+        else:
+            raise ValueError("Invalid frequency")
+
+    def get_motivational_message(self):
+        if self.streak < 5:
+            return "Getting started!"
+        elif self.streak < 10:
+            return "You're on a roll!"
+        elif self.streak < 20:
+            return "Amazing! Keep going!"
+        elif self.streak < 30:
+            return "You're crushing it!"
+        elif self.streak < 50:
+            return "Incredible! Don't stop now!"
+        elif self.streak < 100:
+            return "You're an inspiration!"
+        else:
+            return "Legend status!"
+
 
 class HabitManager:
     def __init__(self, user_id, db_path="habit_tracker.db"):
@@ -90,42 +117,74 @@ class HabitManager:
         self.db_path = db_path
 
     def add_habit(self, title, description, frequency):
-        habit = Habit(None, self.user_id, title, description, frequency, db_path=self.db_path)
+        created_at = datetime.now().strftime('%Y-%m-%d')
+
+        habit = Habit(None, self.user_id, title, description, frequency, created_at, db_path=self.db_path)
         habit.save_to_db()
         return habit
 
     def edit_habit(self, habit_id, title=None, description=None, frequency=None):
-        habit = Habit.get_habit_by_id(habit_id, db_path=self.db_path)
+        habit = self.get_habit_by_id(habit_id)
         if habit:
-            if title is not None:
-                habit.title = title
-            if description is not None:
-                habit.description = description
-            if frequency is not None:
-                habit.frequency = frequency
+            # If the user input is not blank, update the value; otherwise, keep the current value
+            habit.title = title if title.strip() else habit.title
+            habit.description = description if description.strip() else habit.description
+            habit.frequency = frequency if frequency.strip() else habit.frequency
+
             habit.save_to_db()
             return habit
         return None
 
+    def add_preset_habits(self):  # Fixed: Added 'self' parameter
+        preset_habits = [
+            {"title": "Drink Water", "description": "Drink at least 8 glasses of water", "frequency": "Daily"},
+            {"title": "Morning Exercise", "description": "At least 30 minutes of exercise", "frequency": "Daily"},
+            {"title": "Read a Book", "description": "Read for at least 15 minutes", "frequency": "Daily"},
+            {"title": "Meditate", "description": "Meditate for 10 minutes to clear your mind", "frequency": "Daily"},
+            {"title": "No Junk Food", "description": "Avoid eating junk food", "frequency": "Daily"}
+        ]
+
+        for habit in preset_habits:
+            self.add_habit(habit['title'], habit['description'], habit['frequency'])
+
     def delete_habit(self, habit_id):
-        habit = Habit.get_habit_by_id(habit_id, db_path=self.db_path)
+        habit = self.get_habit_by_id(habit_id)
         if habit:
             habit.delete()
 
     def get_habits(self):
         with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
-            cursor.execute('SELECT * FROM habits WHERE user_id = ?', (self.user_id,))
-            habit_rows = cursor.fetchall()
-            return [Habit(*row, db_path=self.db_path) for row in habit_rows]
-
+            cursor.execute("SELECT * FROM habits WHERE user_id = ?", (self.user_id,))
+            habits = [Habit(row['id'], self.user_id, row['title'],
+                            row['description'], row['frequency'], row['created_at'], row['last_completed'],
+                            row['streak'], self.db_path) for row in cursor.fetchall()]
+            return habits
 
     def remind_habits(self):
         today = datetime.now().date()
         habits_to_remind = []
         habits = self.get_habits()
         for habit in habits:
-            # Assuming the next_due_date method has been implemented in the Habit class as shown earlier
-            if habit.next_due_date() <= today:
+            if habit.last_completed is None or habit.next_due_date() <= today:
                 habits_to_remind.append(habit)
         return habits_to_remind
+
+    def get_habit_by_id(self, habit_id):
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row  # Ensure dictionary-like access to columns
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM habits WHERE id = ?", (habit_id,))
+            row = cursor.fetchone()
+            if row:
+                return Habit(row['id'], self.user_id, row['title'], row['description'], row['frequency'],
+                             row['created_at'], row['last_completed'], row['streak'], self.db_path)
+            return None
+
+    def reset_missed_streaks(self):
+        habits = self.get_habits()
+        for habit in habits:
+            if habit.was_missed():
+                habit.reset_streak()
+                habit.save_to_db()

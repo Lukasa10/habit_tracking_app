@@ -1,17 +1,26 @@
 from services.auth_service import register, login
-from services.habit_service import add_habit, edit_habit, delete_habit, get_habits, remind_habits
+from services.habit_service import add_habit, edit_habit, delete_habit, get_habits, remind_habits, complete_habit
 from db.database import create_tables
 import getpass
 
 
 def main_menu(user_id):
     while True:
+        print("\nYour current reminders:")
+        reminders = remind_habits(user_id)
+        reminder_mapping = {}
+
+        if reminders:
+            for index, habit in enumerate(reminders, start=1):
+                print(f"{index}: {habit.title} - {habit.description}")
+                reminder_mapping[index] = habit.habit_id
+
         print("\nMain Menu")
         print("1. Add Habit")
         print("2. Edit Habit")
         print("3. Delete Habit")
         print("4. List Habits")
-        print("5. Complete Habit")
+        print("5. Complete Reminder")
         print("6. Logout")
 
         choice = input("Enter your choice (1-6): ")
@@ -38,14 +47,22 @@ def main_menu(user_id):
 
         elif choice == '4':
             habits = get_habits(user_id)
+            print('here are the list of your habits: ')
             for habit in habits:
-                print(f"{habit.habit_id}: {habit.title} - {habit.description} (Frequency: {habit.frequency})")
+                print(f"{habit.habit_id}: {habit.title} - {habit.description} "
+                      f"(Frequency: {habit.frequency} Streak: {habit.streak} days)")
 
         elif choice == '5':
-            habit_id = int(input("Enter habit ID to mark as completed: "))
-            # You would need to implement the complete_habit function in habit_service.py
-            # complete_habit(user_id, habit_id)
-            print("Habit marked as completed.")
+            reminder_number = int(input("Enter reminder number to mark as completed: "))
+            if reminder_number in reminder_mapping:
+                habit_id = reminder_mapping[reminder_number]
+                success, message = complete_habit(user_id, habit_id)
+                if success:
+                    print(f"Reminder {reminder_number} completed: {message}")
+                else:
+                    print("Error completing the reminder. Please try again.")
+            else:
+                print("Invalid reminder number. Please try again.")
 
         elif choice == '6':
             print("Logging out...")
@@ -58,7 +75,7 @@ def main_menu(user_id):
 def main():
     create_tables()
     while True:
-        print("\nHabit Tracker CLI")
+        print("\nWelcome to Habit Tracker")
         print("1. Register")
         print("2. Login")
         print("3. Exit")
@@ -68,9 +85,12 @@ def main():
             username = input("Choose a username: ")
             password = getpass.getpass("Choose a password: ")
             print("Attempting to register...")
-            register(username, password)
-            print("Register function call completed.")
-            print("Registration successful. Please log in.")
+            registration_result = register(username, password)
+            if registration_result == "Registration successful.":
+
+                print("Registration successful. Please log in.")
+            else:
+                print(registration_result)
 
         elif choice == '2':
             username = input("Enter your username: ")

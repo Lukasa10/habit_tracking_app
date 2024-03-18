@@ -22,5 +22,15 @@ def get_habits(user_id):
 
 
 def remind_habits(user_id):
-    habit_manager = HabitManager(user_id)
+    habit_manager = HabitManager(user_id, "habit_tracker.db")
     return habit_manager.remind_habits()
+
+
+def complete_habit(user_id, habit_id):
+    habit_manager = HabitManager(user_id)
+    habit = habit_manager.get_habit_by_id(habit_id)
+    if habit:
+        habit.complete()
+        message = habit.get_motivational_message()
+        return True, message
+    return False, ""
