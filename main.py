@@ -1,19 +1,27 @@
 from services.auth_service import register, login
 from services.habit_service import add_habit, edit_habit, delete_habit, get_habits, remind_habits, complete_habit
+from services.analytics_service import display_analytics, fetch_today_completion_rate
 from db.database import create_tables
 import getpass
 
 
 def main_menu(user_id):
     while True:
-        print("\nYour current reminders:")
-        reminders = remind_habits(user_id)
+        today_completion_rate = fetch_today_completion_rate(user_id)
+        print(f"\nToday's Completion Rate: {today_completion_rate:.2f}%")
         reminder_mapping = {}
+        if today_completion_rate < 100:
+            print("\nYour current reminders:")
+            reminders = remind_habits(user_id)
 
-        if reminders:
-            for index, habit in enumerate(reminders, start=1):
-                print(f"{index}: {habit.title} - {habit.description}")
-                reminder_mapping[index] = habit.habit_id
+            if reminders:
+                for index, habit in enumerate(reminders, start=1):
+                    print(f"{index}: {habit.title} - {habit.description}")
+                    reminder_mapping[index] = habit.habit_id
+            else:
+                print("No reminders left for today.")
+        else:
+            print("\nYou have completed all your reminders for today!")
 
         print("\nMain Menu")
         print("1. Add Habit")
@@ -21,9 +29,10 @@ def main_menu(user_id):
         print("3. Delete Habit")
         print("4. List Habits")
         print("5. Complete Reminder")
-        print("6. Logout")
+        print("6. Analytical progress")
+        print("7. Logout")
 
-        choice = input("Enter your choice (1-6): ")
+        choice = input("Enter your choice (1-7): ")
 
         if choice == '1':
             title = input("Enter habit title: ")
@@ -48,9 +57,13 @@ def main_menu(user_id):
         elif choice == '4':
             habits = get_habits(user_id)
             print('here are the list of your habits: ')
-            for habit in habits:
-                print(f"{habit.habit_id}: {habit.title} - {habit.description} "
-                      f"(Frequency: {habit.frequency} Streak: {habit.streak} days)")
+            if habits:
+                print("\nYour Habits:")
+                for habit in habits:
+                    created_at_str = habit.created_at.strftime("%Y-%m-%d")
+                    print(f"Habit ID: {habit.habit_id}, Title: {habit.title}, Created on: {created_at_str}")
+            else:
+                print("You have no habits set up yet.")
 
         elif choice == '5':
             reminder_number = int(input("Enter reminder number to mark as completed: "))
@@ -65,6 +78,9 @@ def main_menu(user_id):
                 print("Invalid reminder number. Please try again.")
 
         elif choice == '6':
+            display_analytics(user_id)
+
+        elif choice == '7':
             print("Logging out...")
             break
 

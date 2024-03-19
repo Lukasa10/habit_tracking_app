@@ -38,6 +38,14 @@ def create_tables():
                     FOREIGN KEY(user_id) REFERENCES users(id)
                 );
             """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS completions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    habit_id INTEGER NOT NULL,
+                    completion_date DATE NOT NULL,
+                    FOREIGN KEY(habit_id) REFERENCES habits(id)
+                );
+            """)
             conn.commit()
     except sqlite3.Error as e:
         logging.error(f"Error creating tables: {e}")

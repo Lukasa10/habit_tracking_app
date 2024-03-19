@@ -4,7 +4,7 @@ from datetime import datetime , timedelta
 
 class Habit:
     def __init__(self, habit_id, user_id, title, description, frequency, created_at,
-                 last_completed=None, streak=0, db_path="habit_tracker.db"):
+                 last_completed=None, streak=0, completion=0, db_path="habit_tracker.db"):
         self.habit_id = habit_id
         self.user_id = user_id
         self.title = title
@@ -13,6 +13,7 @@ class Habit:
         self.created_at = datetime.strptime(created_at, '%Y-%m-%d').date() if isinstance(created_at, str) else created_at
         self.last_completed = datetime.strptime(last_completed, '%Y-%m-%d').date() if last_completed and isinstance(last_completed, str) else last_completed
         self.streak = streak
+        self.completion = completion
         self.db_path = db_path
 
     def save_to_db(self):
@@ -43,6 +44,7 @@ class Habit:
     def complete(self):
         self.last_completed = datetime.now().date()
         self.streak += 1
+        self.completion += 1
         self.save_to_db()
 
     def reset_streak(self):
@@ -55,30 +57,6 @@ class Habit:
         next_due = self.next_due_date()
         today = datetime.now().date()
         return today > next_due
-
-    def get_completion_rate(self):
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
-            cursor.execute('SELECT COUNT(*) FROM records WHERE habit_id = ? AND completed = 1', (self.habit_id,))
-            completed_count = cursor.fetchone()[0]
-            possible_completions = self.calculate_possible_completions()
-            if possible_completions == 0:
-                return 0
-            return (completed_count / possible_completions) * 100
-
-    def calculate_possible_completions(self):
-        created_at_date = datetime.strptime(self.created_at, '%Y-%m-%d').date()
-        today = datetime.now().date()
-        delta_days = (today - created_at_date).days
-
-        if self.frequency == 'Daily':
-            return delta_days
-        elif self.frequency == 'Weekly':
-            return delta_days // 7
-        elif self.frequency == 'Monthly':
-            return delta_days // 30
-        else:
-            return 0
 
     def next_due_date(self):
         # If never completed, use the created_at date
@@ -188,3 +166,91 @@ class HabitManager:
             if habit.was_missed():
                 habit.reset_streak()
                 habit.save_to_db()
+
+    def get_today_completion_rate(self):
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        today = datetime.now().date()
+        total_due_habits = 0
+        completed_today = 0
+
+        # Get all habits for the user
+        habits = self.get_habits()
+
+        # Determine which habits were due today
+        for habit in habits:
+            if habit.frequency == 'Daily' or \
+                    (habit.frequency == 'Weekly' and habit.next_due_date().weekday() == today.weekday()) or \
+                    (habit.frequency == 'Monthly' and habit.next_due_date().day == today.day):
+                total_due_habits += 1
+                if habit.last_completed == today:
+                    completed_today += 1
+
+        # If no habits are due today, avoid division by zero by considering completion rate as 100%
+        if total_due_habits == 0:
+            return 100
+
+        completion_rate = (completed_today / total_due_habits) * 100
+        return completion_rate
+
+    def get_monthly_completion_rate(self):
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        today = datetime.now()
+        first_day_of_month = today.replace(day=1)
+        last_day_of_month = (today.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
+
+        cursor.execute("""
+            SELECT h.id, h.title, COUNT(c.habit_id) as completion_count
+            FROM habits h
+            LEFT JOIN completions c ON h.id = c.habit_id
+            WHERE h.user_id = ? AND (c.completion_date BETWEEN ? AND ? OR c.completion_date IS NULL)
+            GROUP BY h.id
+        """, (self.user_id, first_day_of_month.strftime('%Y-%m-%d'), last_day_of_month.strftime('%Y-%m-%d')))
+
+        completions = cursor.fetchall()
+
+        # Adjusted to use integer indices
+        total_completions = sum([c[2] for c in completions])  # c[2] corresponds to completion_count
+        total_habits = len(completions)
+        days_in_month = (last_day_of_month - first_day_of_month).days + 1
+
+        monthly_completion_rate = (total_completions / (total_habits * days_in_month)) * 100 if total_habits > 0 else 0
+
+        # Adjusted to use integer indices for accessing titles
+        most_frequent_habit = max(completions, key=lambda x: x[2], default=(None, None, 0))[1]
+        least_frequent_habit = min(completions, key=lambda x: x[2], default=(None, None, 0))[1]
+
+        return monthly_completion_rate, most_frequent_habit, least_frequent_habit
+
+    def get_habits_sorted_by_frequency_and_streak(self):
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        current_year = datetime.now().year
+
+        cursor.execute("""
+            SELECT h.id, h.title, COUNT(c.id) AS completion_count, h.streak
+            FROM habits h
+            LEFT JOIN completions c ON h.id = c.habit_id AND strftime('%Y', c.completion_date) = ?
+            WHERE h.user_id = ?
+            GROUP BY h.id
+            ORDER BY completion_count DESC, h.streak DESC
+        """, (str(current_year), self.user_id,))
+
+        habits_info = cursor.fetchall()
+
+        return habits_info
+
+    def get_longest_overall_streak(self):
+        longest_streak = 0
+        habit_with_longest_streak = None
+
+        # Assuming you have a way to calculate the streak for each habit
+        for habit in self.get_habits():
+            if habit.streak > longest_streak:
+                longest_streak = habit.streak
+                habit_with_longest_streak = habit.title
+
+        return longest_streak, habit_with_longest_streak
