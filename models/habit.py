@@ -113,13 +113,14 @@ class HabitManager:
             return habit
         return None
 
-    def add_preset_habits(self):  # Fixed: Added 'self' parameter
+    def add_preset_habits(self):
         preset_habits = [
             {"title": "Drink Water", "description": "Drink at least 8 glasses of water", "frequency": "Daily"},
             {"title": "Morning Exercise", "description": "At least 30 minutes of exercise", "frequency": "Daily"},
             {"title": "Read a Book", "description": "Read for at least 15 minutes", "frequency": "Daily"},
             {"title": "Meditate", "description": "Meditate for 10 minutes to clear your mind", "frequency": "Daily"},
-            {"title": "No Junk Food", "description": "Avoid eating junk food", "frequency": "Daily"}
+            {"title": "No Junk Food", "description": "Avoid eating junk food", "frequency": "Daily"},
+            {"title": "Weekly Cleanup", "description": "Do a thorough cleanup every week", "frequency": "Weekly"}
         ]
 
         for habit in preset_habits:
